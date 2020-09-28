@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,6 +25,7 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.lang.Nullable;
 import org.springframework.util.ClassUtils;
 
 /**
@@ -136,35 +137,37 @@ abstract class BootstrapUtils {
 			testContextBootstrapper.setBootstrapContext(bootstrapContext);
 			return testContextBootstrapper;
 		}
+		catch (IllegalStateException ex) {
+			throw ex;
+		}
 		catch (Throwable ex) {
-			if (ex instanceof IllegalStateException) {
-				throw (IllegalStateException) ex;
-			}
 			throw new IllegalStateException("Could not load TestContextBootstrapper [" + clazz +
 					"]. Specify @BootstrapWith's 'value' attribute or make the default bootstrapper class available.",
 					ex);
 		}
 	}
 
-	/**
-	 * @since 4.3
-	 */
+	@Nullable
 	private static Class<?> resolveExplicitTestContextBootstrapper(Class<?> testClass) {
 		Set<BootstrapWith> annotations = AnnotatedElementUtils.findAllMergedAnnotations(testClass, BootstrapWith.class);
-		if (annotations.size() < 1) {
+		if (annotations.isEmpty()) {
 			return null;
 		}
-		if (annotations.size() > 1) {
-			throw new IllegalStateException(String.format(
+		if (annotations.size() == 1) {
+			return annotations.iterator().next().value();
+		}
+
+		// Allow directly-present annotation to override annotations that are meta-present.
+		BootstrapWith bootstrapWith = testClass.getDeclaredAnnotation(BootstrapWith.class);
+		if (bootstrapWith != null) {
+			return bootstrapWith.value();
+		}
+
+		throw new IllegalStateException(String.format(
 				"Configuration error: found multiple declarations of @BootstrapWith for test class [%s]: %s",
 				testClass.getName(), annotations));
-		}
-		return annotations.iterator().next().value();
 	}
 
-	/**
-	 * @since 4.3
-	 */
 	private static Class<?> resolveDefaultTestContextBootstrapper(Class<?> testClass) throws Exception {
 		ClassLoader classLoader = BootstrapUtils.class.getClassLoader();
 		AnnotationAttributes attributes = AnnotatedElementUtils.findMergedAnnotationAttributes(testClass,
